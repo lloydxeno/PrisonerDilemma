@@ -1,0 +1,196 @@
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial.dta"
+
+gen HighP = cond(Column_color=="Blue", 1,0)
+gen ColHighP = cond(Column_color=="Blue",1,0)
+gen RowHighP = cond(Row_color=="Blue",1,0)
+
+recode MatchType (1=1) (2=2) (else=.), gen(GameType)
+replace GameType = 3 if RowHighP==0 & ColHighP==1
+replace GameType = 4 if RowHighP==1 & ColHighP==0
+
+lab def pair 1"LowR-LowC" 2"HighR-HighC" 3"LowR-HighC" 4"HighR-LowC"
+lab values GameType pair
+lab values gametype pair
+
+
+lab def movetype 1"Cooperate" 2"Defect"
+lab values ColSelection movetype
+lab values RowSelection movetype
+
+//Keep data subsets by GameType
+//Low-Low Games
+keep if GameType==1
+collapse (sum) ColPoints RowPoints
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial_Low-Low.dta"
+
+//High-High Games
+keep if GameType==2
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial_Hi-Hi.dta"
+
+//Low-High and High-Low Games
+drop if GameT==1 | GameT==2
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial_Mixed.dta"
+collapse (sum) RowPoints if RowHighP==1
+collapse (sum) ColPoints if ColHighP==1
+
+**
+collapse (sum) RowPoints if RowHighP==0
+collapse (sum) ColPoints if ColHighP==0
+
+
+//Data needs to be "melted" in R
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial.dta"
+order MatchNum GameType Round Colpaxunum ColSelection ColPoints ColHighP 
+drop MatchType HighP
+
+
+saveold "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial_for_melt.dta", version(13)
+
+gen RowMatchNum = MatchNum
+gen RowGameType = GameType
+gen RowRound = Round
+
+
+
+gen Coldefect = cond(ColSelection==2,1,0)
+gen Rowdefect = cond(RowSelection==2,1,0)
+
+gen Coldef_lag = Coldef[_n-1]
+replace Coldef_lag = 0 if Coldef_lag==.
+
+gen Rowdef_lag = Rowdef[_n-1]
+replace Rowdef_lag = 0 if Rowdef_lag==.
+
+//Here code the opponent's choice
+
+gen coldefect = cond(ColSelection==2,1,0)
+
+gen Column_opp_defect_prev = cond(Rowdef_lag==1,1,0)
+gen Row_opp_defect_prev = cond(Coldef_lag==1,1,0)
+
+
+
+
+order MatchNum GameType Round Colpaxunum Coldefect ColPoints ColHighP Column_opp_defect_prev ///
+      RowMatchNum RowGameType RowRound Rowpaxunum Rowdefect RowPoints RowHighP Row_opp_defect_prev
+  
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrial_for_melt.dta", replace
+
+
+stack MatchNum GameType Round Colpaxunum Coldefect ColPoints ColHighP Column_opp_defect_prev ///
+      RowMatchNum RowGameType RowRound Rowpaxunum Rowdefect RowPoints RowHighP Row_opp_defect_prev, into(matchnum gametype round pax selfdefect points highp oppdef_prev) clear
+
+sort matchnum round
+
+xtset pax round
+
+//Label the gametype variable
+
+recode gametype (1=1) (2=2) (else=3), gen(matchtype)
+
+lab def gt 1"Both Low P" 2"Both High P" 3"Mixed"
+lab values matchtype gt
+
+ren highp selfhighp
+
+gen opp_highp = 1 if inlist(pax,2,12,16,19,20,22,51,56,66,4,5,7,8,18,21,23,50,57)
+replace opp_highp = 1 if inlist(pax,25,29,34,36,44,46,33,37,38,49,53,58,61)
+replace opp_highp = 0 if opp_highp==.
+
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrialStacked.dta", replace
+
+recode gametype (1=0) (3/4=0) (else=1), gen(bothhighp)
+
+
+//Model for defection
+xtlogit selfdefect i.selfhighp i.opp_highp i.oppdef_prev i.mixedmatch round, or vce(robust) allbaselevels
+
+//Model for points
+xtreg points i.selfhighp i.opp_highp i.oppdef_prev i.selfdefect i.bothhighp round, re allbaselevels vce(robust) mle
+
+//What matches allow greater earnings
+regress points ib(first).matchtype, baselevels
+
+//Do high p earn more in mixed matches?
+
+xtreg points selfhighp if matchtype==3, vce(robust)
+
+*-------------------------Wide form of the data--------------------
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDWide.dta"
+
+bysort Color: summ Levenson
+bysort Color: summ Age
+bysort Color: summ Hanoi4moves
+bysort Color: summ Hanoi4time
+bysort Color: summ PDP
+
+*------------------------Graphing Here----------------------------*
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrialStacked.dta"
+
+
+//Defection Rate Graph
+
+
+recode matchtype (1/2=0) (3=1), gen(mixedmatch)
+statsby, by(selfhighp mixedmatch) clear: ci prop selfdefect
+
+lab def player 0"Low P" 1"High P"
+lab values selfhighp player
+
+lab def pares 0"Paired with same player type" 1"Paired with opposite player type"
+lab values mixedmatch pares
+
+twoway rspike lb ub selfhighp, by(mixedmatch, legend(off) note("") subtitle(Defection Odds)) ///
+|| scatter mean selfhighp , xla(0 1, val) ytitle("`ytitle'")  xtitle("") xsc(r(-0.2 1.2)) yla(, ang(h))
+
+
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\Defect_rates_for_graph.dta", replace
+
+//Earnings Graph
+
+statsby, by(selfhighp mixedmatch) clear: ci mean points
+twoway rspike lb ub selfhighp, by(mixedmatch, legend(off) note("") subtitle(Points Earned per Round)) ///
+|| scatter mean selfhighp , xla(0 1, val) ytitle("`ytitle'")  xtitle("") xsc(r(-0.2 1.2)) yla(, ang(h))
+
+save "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\Points_for_graph.dta"
+
+
+/*Calculate the percentage of first move defection by Psych status*/
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PDbyTrialStacked.dta"
+
+sort selfhighp pax round
+//defected when opponet prior move was coop
+gen unprov_def = 1 if oppdef_prev==0 & selfdefect==1
+
+
+
+
+//6 June 2024
+***************************Retrieve Defection/Cooperation Parameters******************************
+***********Calculate the defection tendencies for Low P*******************************************
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PD_Trials_lowp_only.dta"
+
+bysort pax (round): gen denom_retal_lp = 1 if oppdef_prev==1
+bysort pax (round): gen retal_def_lp = 1 if oppdef_prev==1 & selfdefect==1
+
+*stats: 486/717 = 68%
+
+//Unconditional defection
+bysort pax (round): gen denom_uncond_lp = 1 if oppdef_prev==0
+gen uncon_def = 1 if selfdef==1 & oppdef_prev==0 
+*di 198/443= 0.45
+
+***********Calculate the defection tendencies for High P*******************************************
+use "\\cabinet.usask.ca\work$\llb296\My Documents\Psychopathy\Prisoner_Dilemma\PD_Trials_highp_only.dta"
+
+
+//retaliat defection
+//denominator: oppdef_prev==1
+bysort pax (round): gen denom_retal_hp = 1 if oppdef_prev==1
+bysort pax (round): gen retal_def_hp = 1 if oppdef_prev==1 & selfdefect==1
+
+*stats: 585/754 = 78%
+//Unconditional defection
+bysort pax (round): gen denom_uncond_hp = 1 if oppdef_prev==0
+gen uncon_def = 1 if selfdef==1 & oppdef_prev==0 
+*di 202/486: 0.42
