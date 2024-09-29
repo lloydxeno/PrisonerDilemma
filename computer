@@ -1,265 +1,157 @@
+library(ggplot2)
+library(reshape2)
+#this makes the results reproducible
+set.seed(5)
 
-######################
-  File 1: tournament.m
-######################
+#Set initial population shares
+psy_share <- 0.05
+np_share <- 1 - psy_share
 
-%set a seed for repeatability
-%To reproduce the 20 outcomes in the paper, use seeds 1-20
-rng(15,"twister")
+mat <- matrix(c(psy_share, np_share), nrow=1)
+pop_mix <- data.frame(mat)
+colnames(pop_mix) <- c("psy_share", "np_share")
 
-%Now define the number of generations over which the tournament is played
-G=999; %number of generations
-k= 0.01; % rate parameter for hirshleifer martinez coll. This means speed
- %initial proportion of strategies in the population
-freq=[0.9550;.045]
-%%%%%%%%%%%%%%%%%%%%%%%%
+#initialize previous moves to NULL
+prev_moves <-c(NA,NA)
 
-%Now define the tournaments in a single generation
-R=rounds(0.99654); %random length
-%R = 40;
-Q=[7,8]; %7 and 8 are the low and high psychopath strategies
-PD=[1,5;0,2.5]; %Lloyd's human payoffs
-n=length(Q); %outer loop: strategies
-Z=zeros(n,n);
-Cumulator = []; %accumulate frequencies per generation
-%Scores=[]; %allocate a matrix of scores per generation
+###define the necessary functions
 
-for l=1:G
-         for i=1:n
-                for j=1:n
-                    [A,B,a,b]=iteratedpd(R,Q(i),Q(j),PD); %A,B are strategies; a,b are payoffs
-                    Z(i,j)=a;
-                end
-        end
- Results=Z*freq
- meanfitness=mean(mean(Z,2))
- %Results=freq+k*(Results-meanfitness)
- freq=freq+k*freq.*(Results-meanfitness);
- freq=freq./sum(freq);
- if freq(1,1) < .01 || freq(2,1) <.01
-        break;
- end
- Cumulator=[Cumulator;freq']
- 
-end
+###The following function handles defection/cooperation
+### probabilities based on the other player's previous move
+### possibly NA in the first round.
 
-%Now write code here that appends a generation number and 
-% then plots the graph
-
-gens=(1:size(Cumulator,1));
-Cumulator=horzcat(gens', Cumulator)
-G = max(gens);
-figure(1) 
-
-plot(Cumulator);
-xlabel('iteration'); 
-ylabel('frequency of strategy');
-title(['Change in Frequency by Generation;  k=' num2str(k)])
-axis([1 G 0 1])
-
-######################
-File 2: rounds.m
-######################  
-%MA40128 Game Theory Project- G.Taylor
-function r=rounds(p)
-%computes a number of rounds, assuming that the chance of a next round is
-%always p. Clearly, breaks if p is 1 or more.
-%Axelrod value for p is 0.99654
-r=1;
-x=rand(1);
-while(x<p)
-    r=r+1;
-    x=rand(1);
-end
-######################
-File 3: iteratedpd.m
-######################  
-%MA40128 Game Theory Project- G.Taylor
-%Wrapper for play.m, runs an iterated prisoner's dilemma 
-%(or any symmetric 2 player, 2 option strategic form game between two
-%players whose strategies are p1strat and p2strat
-%(as interpreted by play.m, see that function's help file). 
-%Play is for r rounds, with payout being based on the matrix 'payoff'
-%[1,4;0,3] gives the weightings used in my report.
-%Returns four arguments- the two lists of strategies (0=defect, 1=coop)
-%and the two scores.  
-function [X,Y,Xscore,Yscore]=iteratedpd(r,p1strat,p2strat,payoff) %the elements inside the square brackets are return values
-mdefect=payoff(1,1); %m stands for "mutual"
-mcoop=payoff(2,2);
-suckerwin=payoff(1,2);
-suckerlose=payoff(2,1);
-X=[];
-Y=[];
-Xscore=0;
-Yscore=0;
-for i=1:r
-    newX=play(X,Y,p1strat);
-    newY=play(Y,X,p2strat);
-    X=[X,newX];
-    Y=[Y,newY];
-    if(newX==0) %P1 defect
-        if(newY==0)
-            Xscore=Xscore+mdefect;
-            Yscore=Yscore+mdefect;
-        else
-            Xscore=Xscore+suckerwin;
-            Yscore=Yscore+suckerlose;
-        end
-    else %P1 cooperate
-        if(newY==0)
-            Xscore=Xscore+suckerlose;
-            Yscore=Yscore+suckerwin;
-        else
-            Xscore=Xscore+mcoop;
-            Yscore=Yscore+mcoop;
-        end
-    end
-end
-
-######################
-File 4: play.m
-###################### 
-%MA40128 Game Theory Project- G.Taylor
-%reads in player's own moves, opponents moves and a strategy. 
-%Returns 1 to cooperate or 0 to defect.
-%Strategies implemented-
-% 1= always defect
-% 2= always cooperate
-% 3= Tit-for-tat
-% 4= GRIM (defect forever if opponent ever defects)
-% 5= Soton Master
-% 6= Soton Slave
-% 7 = Low Psychopathy
-% 8 = High Psychopathy
-% Any other input implements RANDOM- 50% chance of either.
-function x=play(player,opp,strategy) 
-SotonM=[1,0,1,1,0,1,1,1];
-SotonS=[0,1,0,0,1,0,0,0];
-if(strategy==1) %always defect
-    x=0;
-elseif(strategy==2) %always cooperate
-    x=1;
-elseif(strategy==3) %titfortat
-    if(isempty(opp))
-        x=1;
-    else
-        x=opp(length(opp));
-    end
-elseif(strategy==4) %GRIM
-    if(isempty(opp))
-        x=1;
-    else
-        if(sum(opp)<length(opp))
-            x=0;
-        else
-            x=1;
-        end
-    end
-elseif(strategy==5) %Soton Master
-    if(isempty(opp))
-        x=SotonM(1);
-    elseif(length(opp)<8&&~isempty(opp))
-        if(opp(1:length(opp))==SotonS(1:length(opp))) %Opponent has so far signalled correctly as a slave
-            x=SotonM(length(player)+1); %Give the next signal
-        elseif(opp(1:length(opp))==SotonM(1:length(opp))) %Opponent has so far signalled as a master
-            x=SotonM(length(player)+1); %Give the next signal
-        else
-            x=0; %Otherwise, cease signalling and sabotage opponent
-        end
-    else
-        if(opp(1:8)==SotonS) %found a slave
-            x=0; %exploit
-        elseif(opp(1:8)==SotonM) %found another master
-            x=1; %cooperate
-        else 
-            x=0; %Not a Soton program; sabotage
-        end
-    end
-elseif(strategy==6) %Soton slave
-    if(isempty(opp))
-        x=SotonS(1);
-    elseif(length(opp)<8&&~isempty(opp))
-        if(opp(1:length(opp))==SotonS(1:length(opp))) %Opponent has so far signalled correctly as a slave
-            x=SotonS(length(player)+1); %Give the next signal
-        elseif(opp(1:length(opp))==SotonM(1:length(opp))) %Opponent has so far signalled as a master
-            x=SotonS(length(player)+1); %Give the next signal
-        else
-            x=0; %Otherwise, cease signalling and sabotage opponent
-        end
-    else
-        if(opp(1:8)==SotonS) %found a slave
-            x=1; %cooperate
-        elseif(opp(1:8)==SotonM) %found a master
-            x=1; %self-sacrifice
-        else 
-            x=0; %Not a Soton program; sabotage
-        end
-    end
-
-elseif(strategy==7) %Low Psychopathy
-    if(isempty(opp)) %first move
-        s = rand;
-        if(s<0.46)
-            x=0; %defect
-        else
-            x=1; %cooperate
-        end   
-    else % not the first move
-        if(opp(length(opp))==0) %opponent previously defected
-            s=rand;
-            if(s<0.69) 
-                x=0; %defect
-            else
-                x=1; %cooperate
-            end    
-        
-        else  %opponent previously cooperated
-             s=rand;
-             
-            if(s<0.46)
-                x=0; %defect
-            else
-                x=1; %cooperate
-            end   
-       end
-    end
-elseif(strategy==8) %High Psychopathy
-    if(isempty(opp)) %first move
-        s = rand;
-        if(s<0.43)
-            x=0; %defect
-        else
-            x=1; %cooperate
-        end   
-    else % not the first move
-        if(opp(length(opp))==0) %opponent previously defected
-            s=rand;
-            if(s<0.79) 
-                x=0; %defect
-            else
-                x=1; %cooperate
-            end    
-        
-        else  %opponent previously cooperated
-             s=rand;
-             
-            if(s<0.43)
-                x=0; %defect
-            else
-                x=1; %cooperate
-            end   
-       end
-    end
-else %50/50 
-    s=randn;
-    if(s<0)
-        x=0;
-    else
-        x=1;
-    end
-end    
-
-
-
+game <-function(psy_prev=NA, np_prev=NA){
   
+  #generate a random number that becomes
+  #the basis for probability of cooperation or defection
+  temp <- runif(n=1, min=0, max=1)  
+  
+  if(is.na(psy_prev) & is.na(np_prev)){
+    
+    if(temp <= .42){
+      psy_move <- 1
+      np_move <- 1
+    }else if (temp > .42 & temp <=.45) {
+      psy_move <- 0
+      np_move <- 1
+    }else {
+      #this means temp > .45
+      psy_move <- 0
+      np_move <-0
+    }
+    #call encounter function   
+    encounter(psy_move, np_move)  
+    
+  }
+  else{
+    #these are subsequent encounters
+    #take into account previous moves
+    
+    #first test what the psychopath did
+    #to determine what np does
+    if(psy_prev==1){  
+      if(temp <= .68){
+        np_move <- 1
+      }else{np_move <- 0}
+    }
+    else{
+      #psychopath previously cooperated
+      if(temp<=0.45){
+        np_move <- 1
+      }else{np_move <- 0}
+    }
+    #Now test what the non-psychopath did
+    #to determine what psychopath does
+    if(np_prev==1){
+      if(temp<=0.78){
+        psy_move <- 1
+      }else{psy_move <- 0}
+    }
+    else{
+      #non-psychopath previously cooperated
+      if(temp<=0.68){
+        psy_move <- 1
+      }else{psy_move <- 0}
+    }
+    #Here: adjust population share
+    encounter(psy_move, np_move)  
+    
+  }
+}
+
+############This function handles payoff calculation for a single round
+
+encounter<-function(psy_move, np_move){
+  #the following lines handle the cases
+  #when the psychopathic player chooses to cooperate (0)
+  if(psy_move==0){
+    if(np_move==1){
+      psy_win <- 0
+      np_win <- 5
+    }else{
+      psy_win <-2.5
+      np_win <-2.5
+    }
+  }
+  #the following lines handle the cases
+  #when the psychopathic player chooses to to defect (1)   
+  else{
+    if(np_move==1){
+      psy_win <- 0
+      np_win <- 0
+    }else{
+      psy_win <-5
+      np_win <-0
+    }
+  }
+  
+  prev_moves[1] <<-psy_move
+  prev_moves[2] <<-np_move
+  
+  
+  #adjust the population share based on wins
+  print(paste0("The psychopathic player won: ", psy_win, " ", "The non-psychopathic player won:", " ", np_win))
+  ave_payoff <- mean(c(psy_win,np_win))
+  print(paste0("The mean payoff was: ",ave_payoff))
+  #adjust the global variable
+  psy_share <<- psy_share*(1 + (psy_win-ave_payoff)/100)
+  np_share <<- 1-psy_share
+  
+  print(paste0("New P share:", " ", psy_share, ".", "New NP share: ", np_share, "."))
+  outvec <- c(psy_share, np_share)
+  return(outvec)
+  
+}
+
+####################Now run the simulation##############
+
+i = 1
+###Repeat the interaction until one
+###Player goes extinct
+
+while(psy_share>.01 & np_share>.01){
+  new_mix <- game(prev_moves[1], prev_moves[2])
+  print(paste0("Round #:", i))
+  i=i+1
+  pop_mix <- rbind(pop_mix,new_mix)
+  
+}
+#Now plot the results
+iter <- 1:nrow(pop_mix)
+
+pop_mix <- cbind(iter, pop_mix)
+colnames(pop_mix) <- c("Generation", "Psychopathic", "Non-psychopathic")
+
+#reshape to long format
+pop_mix_long <- melt(pop_mix,id.vars = "Generation")
+names(pop_mix_long) <- c("Generation", "Player", "Share")
+
+
+#now plot the graph
+
+ggplot(pop_mix_long,                           
+       aes(x = Generation,
+           y = Share,
+           col = Player)) +
+  geom_line()
   
