@@ -1,4 +1,9 @@
-
+#The code below implements the Axelrod-style Prisoner Dilemma
+#with three strategies: High PP, Prodigal TFT (which has 85% retaliatory defection and 15% unprovoked defection), and Low PP
+#This will run 50 replicates using a random seed
+#To run a single replicate, edit the "for (rep in 1:50)" part
+#e.g., for (rep in 1:1)
+#I acknowledge Dr Stephen D. Benning for editing an earlier version of the code
 
 
 for (rep in 1:50) {
