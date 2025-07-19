@@ -1,0 +1,180 @@
+#The code below implements the Axelrod-style Prisoner Dilemma
+#with three strategies: High PP, TFT, and Low PP
+#This will run 50 replicates using a random seed
+#To run a single replicate, edit the "for (rep in 1:50)" part
+#e.g., for (rep in 1:1)
+#I acknowledge Dr Stephen D. Benning for editing an earlier version of the code
+
+for (rep in 1:50) {
+  
+  set.seed(rep)  # for reproducibility
+  
+  ######################################
+  # 1️ INITIAL CONDITIONS
+  ######################################
+  psy_share <- 0.05
+  tft_share <- 0.05
+  np_share  <- 0.90
+  
+  # Tracking population shares over generations
+  pop_mix <- data.frame(psy_share = psy_share,
+                        tft_share = tft_share,
+                        np_share = np_share)
+  
+  ######################################
+  # 2️ DEF PROBABILITIES
+  ######################################
+  get_probs <- function(player_type) {
+    if (player_type == "psy") return(list(unprovoked = 0.42, retaliatory = 0.78))
+    if (player_type == "np")  return(list(unprovoked = 0.45, retaliatory = 0.68))
+    if (player_type == "tft") return(list(unprovoked = 0.00, retaliatory = 1.00))
+  }
+  
+  ######################################
+  # 3️ PARTNERSHIP LENGTH
+  ######################################
+  draw_rounds <- function() {
+    sample(1:40, 1)
+  }
+  
+  ######################################
+  # 4️ SIMULATE A PAIRING
+  ######################################
+  simulate_pairing <- function(p1, p2) {
+    rounds <- draw_rounds()
+    
+    p1_probs <- get_probs(p1)
+    p2_probs <- get_probs(p2)
+    
+    p1_move <- NA
+    p2_move <- NA
+    p1_total_payoff <- 0
+    p2_total_payoff <- 0
+    
+    for (r in 1:rounds) {
+      temp_p1_def <- runif(1)
+      temp_p2_def <- runif(1)
+      
+      if (is.na(p1_move) & is.na(p2_move)) {
+        move1 <- ifelse(temp_p1_def <= p1_probs$unprovoked, 1, 0)
+        move2 <- ifelse(temp_p2_def <= p2_probs$unprovoked, 1, 0)
+      } else {
+        move1 <- ifelse(p2_move == 1,
+                        ifelse(temp_p1_def <= p1_probs$retaliatory, 1, 0),
+                        ifelse(temp_p1_def <= p1_probs$unprovoked, 1, 0))
+        move2 <- ifelse(p1_move == 1,
+                        ifelse(temp_p2_def <= p2_probs$retaliatory, 1, 0),
+                        ifelse(temp_p2_def <= p2_probs$unprovoked, 1, 0))
+      }
+      
+      # Payoff matrix
+      if (move1 == 0 && move2 == 0) {
+        p1_round_win <- 2.5
+        p2_round_win <- 2.5
+      } else if (move1 == 0 && move2 == 1) {
+        p1_round_win <- 0
+        p2_round_win <- 5
+      } else if (move1 == 1 && move2 == 0) {
+        p1_round_win <- 5
+        p2_round_win <- 0
+      } else {
+        p1_round_win <- 1
+        p2_round_win <- 1
+      }
+      
+      p1_total_payoff <- p1_total_payoff + p1_round_win
+      p2_total_payoff <- p2_total_payoff + p2_round_win
+      
+      p1_move <- move1
+      p2_move <- move2
+    }
+    
+    # Average payoffs over the partnership
+    c(p1_total_payoff / rounds, p2_total_payoff / rounds)
+  }
+  
+  ######################################
+  # 5️ MAIN GENERATION LOOP
+  ######################################
+  i <- 1
+  # Continue simulation while more than one strategy remains above 1% share
+  # (i.e., stop once only one survives) and until 200,000 generations max
+  #the sum(...) returns TRUE, TRUE, TRUE at the start and then 2 TRUEs one FALSE when 
+  #one type goes extinct. Loop stops when only one TRUE is returned
+  while ((sum(c(psy_share, tft_share, np_share) > 0.01) > 1) & (i < 200000)) {
+    if (i == 200000) break
+    
+    # Current types present in the population
+    types <- c()
+    if (psy_share > 0.01) types <- c(types, "psy")
+    if (tft_share > 0.01) types <- c(types, "tft")
+    if (np_share > 0.01)  types <- c(types, "np")
+    
+    # Simulate all pairings (including self-pairings)
+    #This handles the case when one player drops out
+    #That player no longer participates in the round-robin.
+    all_pairs <- expand.grid(p1 = types, p2 = types, stringsAsFactors = FALSE)
+    
+    payoffs <- data.frame(psy = 0, tft = 0, np = 0)
+    counts  <- data.frame(psy = 0, tft = 0, np = 0)
+    
+    for (pair_idx in 1:nrow(all_pairs)) {
+      p1 <- all_pairs$p1[pair_idx]
+      p2 <- all_pairs$p2[pair_idx]
+      
+      # Simulate partnership
+      res <- simulate_pairing(p1, p2)
+      
+      # Add payoff to respective types
+      payoffs[1, p1] <- payoffs[1, p1] + res[1]
+      payoffs[1, p2] <- payoffs[1, p2] + res[2]
+      
+      counts[1, p1]  <- counts[1, p1] + 1
+      counts[1, p2]  <- counts[1, p2] + 1
+    }
+    
+    # Average payoff per type this generation
+    ave_psy <- ifelse(counts$psy > 0, payoffs$psy / counts$psy, NA)
+    ave_tft <- ifelse(counts$tft > 0, payoffs$tft / counts$tft, NA)
+    ave_np  <- ifelse(counts$np  > 0, payoffs$np  / counts$np,  NA)
+    
+    # Population average payoff
+    weighted_sum <- sum(c(ave_psy * psy_share, ave_tft * tft_share, ave_np * np_share), na.rm = TRUE)
+    mean_payoff  <- weighted_sum
+    
+    # Replicator dynamic: Axelrod-style global update
+    if (!is.na(ave_psy)) {
+      psy_share <- psy_share * (1 + (ave_psy - mean_payoff) / 100)
+    }
+    if (!is.na(ave_tft)) {
+      tft_share <- tft_share * (1 + (ave_tft - mean_payoff) / 100)
+    }
+    if (!is.na(ave_np)) {
+      np_share  <- np_share  * (1 + (ave_np  - mean_payoff) / 100)
+    }
+    
+    # Normalize
+    total <- psy_share + tft_share + np_share
+    psy_share <- psy_share / total
+    tft_share <- tft_share / total
+    np_share  <- np_share  / total
+    
+    # Track history
+    pop_mix <- rbind(pop_mix, data.frame(psy_share, tft_share, np_share))
+    
+    i <- i + 1
+  }
+  
+  ######################################
+  # 6️ RESULT OUTPUT
+  ######################################
+  cat(sprintf("Replicate %d Generation %d Final Shares: High PP=%.3f, TFT=%.3f, Low PP=%.3f\n", 
+              rep, 
+              i, 
+              tail(pop_mix$psy_share, 1), 
+              tail(pop_mix$tft_share, 1), 
+              tail(pop_mix$np_share, 1)))
+  
+  # Clean up before next replicate
+  rm(list = setdiff(ls(), "rep"))
+}
