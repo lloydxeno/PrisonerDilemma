@@ -5,7 +5,6 @@
 #e.g., for (rep in 1:1)
 #I acknowledge Dr Stephen D. Benning for editing an earlier version of the code
 
-
 for (rep in 1:50) {
   
   set.seed(rep)
@@ -17,7 +16,6 @@ for (rep in 1:50) {
   tft_share <- 0.05
   np_share  <- 0.90
   
-  # Make sure pop_mix is *per replicate*
   pop_mix <- data.frame(
     Generation = 1,
     High_PP = psy_share,
@@ -31,15 +29,14 @@ for (rep in 1:50) {
   get_probs <- function(player_type) {
     if (player_type == "psy") return(list(unprovoked = 0.42, retaliatory = 0.78))
     if (player_type == "np")  return(list(unprovoked = 0.45, retaliatory = 0.68))
-    # Imperfect TFT
     if (player_type == "tft") return(list(unprovoked = 0.15, retaliatory = 0.85))
   }
   
   #############################################
-  # 3  PARTNERSHIP LENGTH
+  # 3  PARTNERSHIP LENGTH (avoid zero rounds)
   #############################################
   draw_rounds <- function() {
-    sample(0:40, 1)
+    sample(1:40, 1)
   }
   
   #############################################
@@ -146,6 +143,11 @@ for (rep in 1:50) {
     tft_share <- tft_share / total
     np_share  <- np_share  / total
     
+    # Replace any NaNs with 0
+    psy_share[is.na(psy_share)] <- 0
+    tft_share[is.na(tft_share)] <- 0
+    np_share[is.na(np_share)]   <- 0
+    
     i <- i + 1
     pop_mix <- rbind(pop_mix, data.frame(
       Generation = i,
@@ -165,6 +167,5 @@ for (rep in 1:50) {
               tail(pop_mix$TFT, 1),
               tail(pop_mix$High_PP, 1)))
   
-  # Clean up before next replicate
   rm(list = setdiff(ls(), "rep"))
 }
