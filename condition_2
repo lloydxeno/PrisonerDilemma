@@ -169,3 +169,42 @@ for (rep in 1:50) {
   
   rm(list = setdiff(ls(), "rep"))
 }
+
+ #############################################
+ # 7 FIGURE 3 PLOT
+ #############################################
+ #This is based on a single repetition (seed #1) in the above loop
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Add generation number explicitly, just in case
+pop_mix$Generation <- seq_len(nrow(pop_mix))
+
+# Reshape to long format
+pop_long <- pop_mix %>%
+  pivot_longer(cols = c(High_PP, TFT, Low_PP),
+               names_to = "Strategy",
+               values_to = "Share")
+
+# Recode strategy labels for clarity (optional, you can remove this block if not needed)
+pop_long$Strategy <- recode(pop_long$Strategy,
+                            "Low_PP" = "Low PP",
+                            "TFT" = "Prodigal TFT",
+                            "High_PP" = "High PP")
+
+# Plot the population dynamics
+ggplot(pop_long, aes(x = Generation, y = Share, color = Strategy)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Evolutionary Dynamics with Prodigal TFT",
+    x = "Generation",
+    y = "Population Share",
+    color = "Strategy"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c(
+    "Low PP" = "#619CFF",
+    "Prodigal TFT" = "#00BA38",
+    "High PP" = "#F8766D"
+  ))
